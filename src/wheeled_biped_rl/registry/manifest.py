@@ -69,6 +69,7 @@ class ArtifactRefs:
     hyperparameters: str | None = None
     metrics: str = "metrics.jsonl"
     evaluations: str = "evaluations.jsonl"
+    observability: str = "observability.jsonl"
 
 
 @dataclass
