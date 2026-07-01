@@ -1,4 +1,9 @@
-"""Command-line interface for the local controller-candidate registry."""
+"""Command-line interface for the local controller-candidate registry.
+
+The CLI is intentionally thin over the registry store/query functions. It is useful for
+manual inspection and tests, while training code can call the same Python APIs
+directly.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +18,14 @@ from wheeled_biped_rl.registry.store import CandidateStore
 
 
 def _load_index_records(root: Path) -> list[dict]:
-    """Load candidate index rows, rebuilding the index if it is absent."""
+    """Load candidate index rows, rebuilding the index if it is absent.
+
+    Args:
+        root: Registry root directory.
+
+    Returns:
+        Parsed rows from ``indexes/candidates.jsonl``.
+    """
 
     index_path = root / "indexes" / "candidates.jsonl"
     if not index_path.is_file():
@@ -26,7 +38,12 @@ def _load_index_records(root: Path) -> list[dict]:
 
 
 def _matches_filters(record: dict, args: argparse.Namespace) -> bool:
-    """Return whether an index row satisfies list-command filters."""
+    """Return whether an index row satisfies list-command filters.
+
+    Args:
+        record: One flattened candidate index row.
+        args: Parsed arguments for the ``list`` subcommand.
+    """
 
     filters = {
         "task_id": args.task,
@@ -41,7 +58,11 @@ def _matches_filters(record: dict, args: argparse.Namespace) -> bool:
 
 
 def _handle_list(root: Path, args: argparse.Namespace) -> int:
-    """Print candidate ids matching the supplied filters."""
+    """Print candidate ids matching the supplied filters.
+
+    Returns:
+        Zero when listing completes, even if no candidates match.
+    """
 
     records = _load_index_records(root)
     for record in records:
@@ -51,7 +72,11 @@ def _handle_list(root: Path, args: argparse.Namespace) -> int:
 
 
 def _handle_show(root: Path, args: argparse.Namespace) -> int:
-    """Print one candidate manifest as JSON."""
+    """Print one candidate manifest as JSON.
+
+    Returns:
+        Zero when the manifest is found and printed.
+    """
 
     store = CandidateStore(root)
     manifest = store.read_manifest(args.candidate_id)
@@ -60,7 +85,11 @@ def _handle_show(root: Path, args: argparse.Namespace) -> int:
 
 
 def _handle_compare(root: Path, args: argparse.Namespace) -> int:
-    """Compare two candidates and print recipe-id mismatches."""
+    """Compare two candidates and print recipe-id mismatches.
+
+    Returns:
+        Zero when candidates are compatible, one when any recipe id differs.
+    """
 
     store = CandidateStore(root)
     first_manifest = store.read_manifest(args.first_candidate_id)
@@ -77,7 +106,13 @@ def _handle_compare(root: Path, args: argparse.Namespace) -> int:
 def _handle_status_transition(root: Path,
                               args: argparse.Namespace,
                               status: str) -> int:
-    """Apply a lifecycle status transition and print the new status."""
+    """Apply a lifecycle status transition and print the new status.
+
+    Args:
+        root: Registry root directory.
+        args: Parsed lifecycle subcommand arguments.
+        status: Lifecycle status to write to the candidate manifest.
+    """
 
     store = CandidateStore(root)
     store.transition_status(candidate_id=args.candidate_id,
@@ -89,7 +124,11 @@ def _handle_status_transition(root: Path,
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the registry CLI argument parser."""
+    """Build the registry CLI argument parser.
+
+    Returns:
+        Configured parser for index/list/show/compare and lifecycle commands.
+    """
 
     parser = argparse.ArgumentParser(prog="candidate-registry")
     parser.add_argument("--root", default="runs")
@@ -119,7 +158,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the registry CLI and return a process-style exit code."""
+    """Run the registry CLI and return a process-style exit code.
+
+    Args:
+        argv: Optional argument list. ``None`` uses process command-line arguments.
+
+    Returns:
+        Process-style exit code for tests and ``sys.exit``.
+    """
 
     parser = build_parser()
     args = parser.parse_args(argv)

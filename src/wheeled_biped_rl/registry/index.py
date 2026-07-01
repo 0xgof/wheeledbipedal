@@ -1,4 +1,9 @@
-"""Derived indexes for local controller-candidate queries."""
+"""Derived indexes for local controller-candidate queries.
+
+Indexes are rebuilt from candidate folders and are therefore caches, not the source of
+truth. The authoritative records remain the manifests and JSONL files under each
+candidate directory.
+"""
 
 from __future__ import annotations
 
@@ -12,14 +17,23 @@ from wheeled_biped_rl.registry.store import CandidateStore
 
 @dataclass
 class IndexPaths:
-    """Paths to the derived registry index files."""
+    """Paths to the derived registry index files.
+
+    Attributes:
+        candidates: JSONL index of flattened candidate manifest rows.
+        evaluations: JSONL index containing concatenated evaluation records.
+    """
 
     candidates: Path
     evaluations: Path
 
 
 def _candidate_index_record(manifest) -> dict:
-    """Flatten one candidate manifest into a JSONL-friendly index row."""
+    """Flatten one candidate manifest into a JSONL-friendly index row.
+
+    The row duplicates the recipe ids because those are the most common query fields
+    for filtering and compatibility checks.
+    """
 
     manifest_dict = record_to_dict(manifest)
     recipe_dict = manifest_dict.pop("recipe")
@@ -35,7 +49,14 @@ def _candidate_index_record(manifest) -> dict:
 
 
 def rebuild_indexes(root: str | Path) -> IndexPaths:
-    """Rebuild derived candidate and evaluation indexes from manifest folders."""
+    """Rebuild derived candidate and evaluation indexes from manifest folders.
+
+    Args:
+        root: Registry root containing ``candidates/``.
+
+    Returns:
+        Paths to the rebuilt candidate and evaluation index files.
+    """
 
     store = CandidateStore(root)
     index_root = Path(root) / "indexes"
