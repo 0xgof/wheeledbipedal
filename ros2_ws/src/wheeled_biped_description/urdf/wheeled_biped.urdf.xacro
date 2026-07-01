@@ -1,0 +1,111 @@
+<?xml version="1.0"?>
+<robot name="wheeled_biped" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ===================================================================== -->
+  <!-- BRG-2: load the canonical robot config (installed into the package     -->
+  <!-- share by BRG-1) so the whole description is config-driven.            -->
+  <!-- ===================================================================== -->
+  <xacro:property name="cfg_path"
+                  value="$(find wheeled_biped_description)/config/wheeled_biped.yaml"/>
+  <xacro:property name="cfg" value="${xacro.load_yaml(cfg_path)}"/>
+
+  <xacro:property name="geom" value="${cfg['geometry']}"/>
+  <xacro:property name="jnts" value="${cfg['joints']}"/>
+  <xacro:property name="act" value="${cfg['actuators']}"/>
+
+  <!-- geometry (metres) -->
+  <xacro:property name="body_x" value="${geom['body']['size_m']['x']}"/>
+  <xacro:property name="body_y" value="${geom['body']['size_m']['y']}"/>
+  <xacro:property name="body_z" value="${geom['body']['size_m']['z']}"/>
+  <xacro:property name="track" value="${geom['track_width_m']}"/>
+  <xacro:property name="hip_x" value="${geom['hip_offset_m']['x']}"/>
+  <xacro:property name="hip_z" value="${geom['hip_offset_m']['z']}"/>
+  <xacro:property name="thigh_len" value="${geom['thigh']['length_m']}"/>
+  <xacro:property name="thigh_rad" value="${geom['thigh']['radius_m']}"/>
+  <xacro:property name="shank_len" value="${geom['shank']['length_m']}"/>
+  <xacro:property name="shank_rad" value="${geom['shank']['radius_m']}"/>
+  <xacro:property name="wheel_rad" value="${geom['wheel']['radius_m']}"/>
+  <xacro:property name="wheel_w" value="${geom['wheel']['width_m']}"/>
+
+  <!-- joint limits (radians) -->
+  <xacro:property name="hip_lo" value="${jnts['hip']['limit_lower_rad']}"/>
+  <xacro:property name="hip_hi" value="${jnts['hip']['limit_upper_rad']}"/>
+  <xacro:property name="knee_lo" value="${jnts['knee']['limit_lower_rad']}"/>
+  <xacro:property name="knee_hi" value="${jnts['knee']['limit_upper_rad']}"/>
+
+  <!-- effort/velocity derive from `actuators` (single source); cosmetic for display -->
+  <xacro:property name="hip_eff" value="${act['hip_motor']['max_torque_nm']}"/>
+  <xacro:property name="hip_vel" value="${act['hip_motor']['max_velocity_rad_s']}"/>
+  <xacro:property name="wheel_eff" value="${act['wheel_motor']['max_torque_nm']}"/>
+  <xacro:property name="wheel_vel" value="${act['wheel_motor']['max_velocity_rad_s']}"/>
+
+  <!-- ===================================================================== -->
+  <!-- RD-1: serial-tree, primitive description. REP-103 (x fwd, y left,      -->
+  <!-- z up); leg joints rotate about y (pitch). Zero pose = legs straight    -->
+  <!-- down. base_link at the body geometric centre.                         -->
+  <!-- ===================================================================== -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="${body_x} ${body_y} ${body_z}"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <!-- One leg: hip (revolute) -> thigh -> knee (revolute) -> shank ->        -->
+  <!-- wheel (continuous). reflect = +1 (left) / -1 (right) mirrors the       -->
+  <!-- lateral hip offset.                                                    -->
+  <xacro:macro name="wheel_leg" params="side reflect">
+    <joint name="${side}_hip_joint" type="revolute">
+      <parent link="base_link"/>
+      <child link="${side}_thigh"/>
+      <origin xyz="${hip_x} ${float(reflect) * track / 2.0} ${hip_z}" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${hip_lo}" upper="${hip_hi}" effort="${hip_eff}" velocity="${hip_vel}"/>
+    </joint>
+    <link name="${side}_thigh">
+      <visual>
+        <origin xyz="0 0 ${-thigh_len / 2.0}" rpy="0 0 0"/>
+        <geometry>
+          <cylinder length="${thigh_len}" radius="${thigh_rad}"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="${side}_knee_joint" type="revolute">
+      <parent link="${side}_thigh"/>
+      <child link="${side}_shank"/>
+      <origin xyz="0 0 ${-thigh_len}" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${knee_lo}" upper="${knee_hi}" effort="${hip_eff}" velocity="${hip_vel}"/>
+    </joint>
+    <link name="${side}_shank">
+      <visual>
+        <origin xyz="0 0 ${-shank_len / 2.0}" rpy="0 0 0"/>
+        <geometry>
+          <cylinder length="${shank_len}" radius="${shank_rad}"/>
+        </geometry>
+      </visual>
+    </link>
+
+    <joint name="${side}_wheel_joint" type="continuous">
+      <parent link="${side}_shank"/>
+      <child link="${side}_wheel"/>
+      <origin xyz="0 0 ${-shank_len}" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit effort="${wheel_eff}" velocity="${wheel_vel}"/>
+    </joint>
+    <link name="${side}_wheel">
+      <visual>
+        <origin xyz="0 0 0" rpy="1.5707963 0 0"/>
+        <geometry>
+          <cylinder length="${wheel_w}" radius="${wheel_rad}"/>
+        </geometry>
+      </visual>
+    </link>
+  </xacro:macro>
+
+  <xacro:wheel_leg side="left" reflect="1"/>
+  <xacro:wheel_leg side="right" reflect="-1"/>
+
+</robot>
