@@ -1,0 +1,10 @@
+{
+  "python.defaultInterpreterPath": "C:\\ProgramData\\anaconda3\\python.exe",
+  "python.envFile": "${workspaceFolder}\\.vscode\\test.env",
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": [
+    "tests"
+  ],
+  "python.testing.autoTestDiscoverOnSaveEnabled": true
+}

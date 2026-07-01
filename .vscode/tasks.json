@@ -1,0 +1,39 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "pytest: all",
+      "type": "shell",
+      "command": "py",
+      "args": [
+        "-3.12",
+        "-m",
+        "pytest"
+      ],
+      "options": {
+        "env": {
+          "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+        }
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "compileall: src tests",
+      "type": "shell",
+      "command": "py",
+      "args": [
+        "-3.12",
+        "-m",
+        "compileall",
+        "-q",
+        "src",
+        "tests"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}
