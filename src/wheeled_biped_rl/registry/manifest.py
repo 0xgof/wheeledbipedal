@@ -1,4 +1,10 @@
-"""Manifest records for controller candidates."""
+"""Manifest records for controller candidates.
+
+This module defines the serializable records stored in candidate folders. The
+records are deliberately small dataclasses with explicit validation so registry
+files remain human-readable YAML/JSONL while still rejecting missing or malformed
+candidate-defining fields.
+"""
 
 from __future__ import annotations
 
@@ -21,7 +27,15 @@ _ALLOWED_STATUS = {
 
 def _require_text(field_name: str,
                   field_value: str) -> None:
-    """Require a non-empty text field in a manifest record."""
+    """Require a non-empty text field in a manifest record.
+
+    Args:
+        field_name: Name used in the validation error.
+        field_value: Value expected to be a non-empty string.
+
+    Raises:
+        ValueError: If the field is missing, non-text, or empty.
+    """
 
     if not isinstance(field_value, str) or not field_value:
         raise ValueError(f"{field_name} is required")
@@ -29,7 +43,11 @@ def _require_text(field_name: str,
 
 def _require_versioned_id(field_name: str,
                           field_value: str) -> None:
-    """Require a lowercase snake-case identifier with a version suffix."""
+    """Require a lowercase snake-case identifier with a version suffix.
+
+    Versioned ids make compatibility checks explicit. Examples include
+    ``balance_v1``, ``hip_wheel_4d_v1``, and ``python_sim_v1``.
+    """
 
     _require_text(field_name, field_value)
     if not _VERSIONED_ID_PATTERN.fullmatch(field_value):
@@ -38,7 +56,11 @@ def _require_versioned_id(field_name: str,
 
 @dataclass
 class ArtifactRefs:
-    """Relative artifact paths stored inside a controller candidate folder."""
+    """Relative artifact paths stored inside a controller candidate folder.
+
+    Paths are intentionally relative so a candidate folder can be moved, archived, or
+    synced from an HPC run without rewriting manifest contents.
+    """
 
     checkpoint: str | None = None
     resolved_config: str = "resolved_config.yaml"
@@ -51,7 +73,14 @@ class ArtifactRefs:
 
 @dataclass
 class StatusTransition:
-    """One lifecycle status change for a controller candidate."""
+    """One lifecycle status change for a controller candidate.
+
+    Attributes:
+        status: New candidate lifecycle status.
+        reason: Human-readable reason for the transition.
+        created_at: UTC timestamp for the transition.
+        evaluator: Optional person, process, or gate that made the decision.
+    """
 
     status: str
     reason: str
@@ -59,6 +88,8 @@ class StatusTransition:
     evaluator: str | None = None
 
     def __post_init__(self) -> None:
+        """Validate status transition fields after dataclass construction."""
+
         if self.status not in _ALLOWED_STATUS:
             raise ValueError(f"status must be one of {sorted(_ALLOWED_STATUS)}")
         _require_text("reason", self.reason)
@@ -67,7 +98,12 @@ class StatusTransition:
 
 @dataclass
 class CandidateRecipe:
-    """Versioned inputs that define a controller candidate's meaning."""
+    """Versioned inputs that define a controller candidate's meaning.
+
+    A recipe is the compatibility contract for a checkpoint. Candidates with
+    different recipe ids may both be valid but should not be directly compared as if
+    they were trained under the same assumptions.
+    """
 
     action_interface_id: str
     observation_interface_id: str
@@ -79,6 +115,8 @@ class CandidateRecipe:
     mechanism_id: str
 
     def __post_init__(self) -> None:
+        """Validate every recipe id as a versioned lowercase identifier."""
+
         for recipe_field in fields(self):
             field_name = recipe_field.name
             field_value = getattr(self, field_name)
@@ -87,7 +125,12 @@ class CandidateRecipe:
 
 @dataclass
 class CandidateManifest:
-    """Top-level metadata record for one controller candidate."""
+    """Top-level metadata record for one controller candidate.
+
+    The manifest is the primary entry point for a candidate folder. It connects
+    candidate identity, code provenance, lifecycle state, candidate-defining recipe
+    ids, and relative artifact paths.
+    """
 
     candidate_id: str
     run_id: str
@@ -104,6 +147,8 @@ class CandidateManifest:
     status_history: list[StatusTransition] = field(default_factory=list)
 
     def __post_init__(self) -> None:
+        """Validate required identity, lifecycle, recipe, and artifact fields."""
+
         _require_text("candidate_id", self.candidate_id)
         _require_text("run_id", self.run_id)
         _require_text("checkpoint_id", self.checkpoint_id)
@@ -125,7 +170,11 @@ class CandidateManifest:
 
 @dataclass
 class MetricRecord:
-    """One append-only training metric row for a candidate checkpoint."""
+    """One append-only training metric row for a candidate checkpoint.
+
+    Metric records are written as JSONL so long-running training jobs can append
+    progress without rewriting existing artifacts.
+    """
 
     candidate_id: str
     checkpoint_id: str
@@ -133,6 +182,8 @@ class MetricRecord:
     metrics: dict[str, float]
 
     def __post_init__(self) -> None:
+        """Validate metric identity and non-negative training step."""
+
         _require_text("candidate_id", self.candidate_id)
         _require_text("checkpoint_id", self.checkpoint_id)
         if self.step < 0:
@@ -141,7 +192,11 @@ class MetricRecord:
 
 @dataclass
 class EvaluationRecord:
-    """One append-only deterministic evaluation result for a candidate."""
+    """One append-only deterministic evaluation result for a candidate.
+
+    Evaluation records are separate from training metrics because they represent a
+    named scenario, seed, validation layer, and pass/fail outcome.
+    """
 
     candidate_id: str
     checkpoint_id: str
@@ -155,6 +210,8 @@ class EvaluationRecord:
     failure_reason: str | None = None
 
     def __post_init__(self) -> None:
+        """Validate evaluation identity and versioned scenario id."""
+
         _require_text("candidate_id", self.candidate_id)
         _require_text("checkpoint_id", self.checkpoint_id)
         _require_text("evaluation_id", self.evaluation_id)
@@ -163,7 +220,14 @@ class EvaluationRecord:
 
 
 def record_to_dict(record: Any) -> dict[str, Any]:
-    """Convert a dataclass or mapping record into a plain dictionary."""
+    """Convert a dataclass or mapping record into a plain dictionary.
+
+    Args:
+        record: Dataclass instance or mapping-like dictionary.
+
+    Returns:
+        A plain dictionary suitable for YAML or JSON serialization.
+    """
 
     if is_dataclass(record):
         record_dict = asdict(record)
@@ -174,28 +238,56 @@ def record_to_dict(record: Any) -> dict[str, Any]:
 
 
 def candidate_recipe_from_dict(recipe_dict: dict[str, Any]) -> CandidateRecipe:
-    """Build and validate a candidate recipe from serialized fields."""
+    """Build and validate a candidate recipe from serialized fields.
+
+    Args:
+        recipe_dict: Mapping loaded from a manifest or recipe YAML file.
+
+    Returns:
+        Validated ``CandidateRecipe`` instance.
+    """
 
     recipe = CandidateRecipe(**recipe_dict)
     return recipe
 
 
 def artifact_refs_from_dict(artifact_dict: dict[str, Any]) -> ArtifactRefs:
-    """Build artifact references from serialized fields."""
+    """Build artifact references from serialized fields.
+
+    Args:
+        artifact_dict: Mapping loaded from serialized manifest artifact fields.
+
+    Returns:
+        ``ArtifactRefs`` with default paths filled where fields are omitted.
+    """
 
     artifacts = ArtifactRefs(**artifact_dict)
     return artifacts
 
 
 def status_transition_from_dict(transition_dict: dict[str, Any]) -> StatusTransition:
-    """Build a status transition from serialized fields."""
+    """Build a status transition from serialized fields.
+
+    Args:
+        transition_dict: Mapping loaded from manifest ``status_history``.
+
+    Returns:
+        Validated lifecycle transition record.
+    """
 
     transition = StatusTransition(**transition_dict)
     return transition
 
 
 def manifest_from_dict(manifest_dict: dict[str, Any]) -> CandidateManifest:
-    """Build and validate a manifest from serialized YAML fields."""
+    """Build and validate a manifest from serialized YAML fields.
+
+    Args:
+        manifest_dict: Mapping loaded from ``candidate.yaml``.
+
+    Returns:
+        Validated ``CandidateManifest`` with nested records reconstructed.
+    """
 
     manifest_fields = dict(manifest_dict)
     manifest_fields["recipe"] = candidate_recipe_from_dict(manifest_fields["recipe"])
