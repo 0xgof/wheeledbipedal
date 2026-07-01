@@ -13,6 +13,8 @@ import json
 
 import yaml
 
+from wheeled_biped_rl.observability.context import ExperimentContext
+from wheeled_biped_rl.observability.events import ObservabilityEvent
 from wheeled_biped_rl.registry.manifest import (
     CandidateManifest,
     MetricRecord,
@@ -54,7 +56,9 @@ class CandidateStore:
         candidate_path = self.candidates_root / candidate_id
         return candidate_path
 
-    def create_candidate(self, manifest: CandidateManifest) -> Path:
+    def create_candidate(self,
+                         manifest: CandidateManifest,
+                         observability_context: ExperimentContext | None = None) -> Path:
         """Create the folder layout and initial files for one candidate.
 
         The method writes the manifest, recipe snapshot, empty resolved config, empty
@@ -78,6 +82,18 @@ class CandidateStore:
         self._write_yaml(candidate_path / "resolved_config.yaml", {})
         (candidate_path / "metrics.jsonl").write_text("", encoding="utf-8")
         (candidate_path / "evaluations.jsonl").write_text("", encoding="utf-8")
+        (candidate_path / "observability.jsonl").write_text("", encoding="utf-8")
+        if observability_context is not None:
+            self._append_observability_event_from_context(
+                context=observability_context,
+                event_type="candidate_created",
+                message="candidate folder created",
+                payload={
+                    "training_layer": manifest.training_layer,
+                    "status": manifest.status,
+                    "mechanism_id": manifest.recipe.mechanism_id,
+                    "backend_id": manifest.recipe.backend_id,
+                })
         return candidate_path
 
     def write_manifest(self, manifest: CandidateManifest) -> None:
@@ -106,7 +122,9 @@ class CandidateStore:
         manifest = manifest_from_dict(manifest_dict)
         return manifest
 
-    def append_metric(self, metric_record: MetricRecord) -> None:
+    def append_metric(self,
+                      metric_record: MetricRecord,
+                      observability_context: ExperimentContext | None = None) -> None:
         """Append one training metric record to the candidate metrics stream.
 
         Args:
@@ -115,8 +133,18 @@ class CandidateStore:
 
         metric_path = self.candidate_dir(metric_record.candidate_id) / "metrics.jsonl"
         self._append_jsonl(metric_path, record_to_dict(metric_record))
+        if observability_context is not None:
+            self._append_observability_event_from_context(
+                context=observability_context,
+                event_type="metric_appended",
+                message="metric record appended",
+                step=metric_record.step,
+                metrics=metric_record.metrics,
+                payload={"checkpoint_id": metric_record.checkpoint_id})
 
-    def append_evaluation(self, evaluation_record: Any) -> None:
+    def append_evaluation(self,
+                          evaluation_record: Any,
+                          observability_context: ExperimentContext | None = None) -> None:
         """Append one evaluation record to the candidate evaluations stream.
 
         Args:
@@ -128,6 +156,20 @@ class CandidateStore:
         evaluation_path = (self.candidate_dir(evaluation_dict["candidate_id"])
                            / "evaluations.jsonl")
         self._append_jsonl(evaluation_path, evaluation_dict)
+        if observability_context is not None:
+            self._append_observability_event_from_context(
+                context=observability_context,
+                event_type="evaluation_appended",
+                message="evaluation record appended",
+                metrics=dict(evaluation_dict.get("metrics", {})),
+                payload={
+                    "checkpoint_id": evaluation_dict["checkpoint_id"],
+                    "evaluation_id": evaluation_dict["evaluation_id"],
+                    "validation_layer": evaluation_dict["validation_layer"],
+                    "scenario_id": evaluation_dict["scenario_id"],
+                    "passed": evaluation_dict["passed"],
+                    "score": evaluation_dict["score"],
+                })
 
     def read_evaluations(self, candidate_id: str) -> list[dict[str, Any]]:
         """Read all evaluation records for a candidate.
@@ -145,11 +187,44 @@ class CandidateStore:
             evaluations.append(json.loads(evaluation_line))
         return evaluations
 
+    def append_observability(self, event: ObservabilityEvent | dict[str, Any]) -> None:
+        """Append one structured observability event to a candidate stream.
+
+        Args:
+            event: Observability event dataclass or serialized event dictionary.
+        """
+
+        if isinstance(event, ObservabilityEvent):
+            event_dict = event.to_dict()
+        else:
+            event_dict = dict(event)
+        observability_path = (self.candidate_dir(event_dict["candidate_id"])
+                              / "observability.jsonl")
+        self._append_jsonl(observability_path, event_dict)
+
+    def read_observability(self, candidate_id: str) -> list[dict[str, Any]]:
+        """Read all observability events for a candidate.
+
+        Args:
+            candidate_id: Candidate whose ``observability.jsonl`` should be read.
+
+        Returns:
+            Serialized observability events in append order.
+        """
+
+        observability_path = self.candidate_dir(candidate_id) / "observability.jsonl"
+        observability_events = []
+        for event_line in observability_path.read_text(encoding="utf-8").splitlines():
+            observability_events.append(json.loads(event_line))
+        return observability_events
+
     def transition_status(self,
                           candidate_id: str,
                           status: str,
                           reason: str,
-                          evaluator: str | None = None) -> StatusTransition:
+                          evaluator: str | None = None,
+                          observability_context: ExperimentContext | None = None
+                          ) -> StatusTransition:
         """Update candidate status and append a lifecycle transition record.
 
         Args:
@@ -170,6 +245,16 @@ class CandidateStore:
         manifest.status = status
         manifest.status_history.append(transition)
         self.write_manifest(manifest)
+        if observability_context is not None:
+            self._append_observability_event_from_context(
+                context=observability_context,
+                event_type="candidate_status_transitioned",
+                message="candidate status transitioned",
+                payload={
+                    "status": status,
+                    "reason": reason,
+                    "evaluator": evaluator,
+                })
         return transition
 
     def write_reward_spec(self,
@@ -203,6 +288,25 @@ class CandidateStore:
         manifest = self.read_manifest(candidate_id)
         manifest.artifacts.hyperparameters = "hyperparameters.yaml"
         self.write_manifest(manifest)
+
+    def _append_observability_event_from_context(self,
+                                                 context: ExperimentContext,
+                                                 event_type: str,
+                                                 message: str,
+                                                 step: int | None = None,
+                                                 metrics: dict[str, float] | None = None,
+                                                 payload: dict[str, Any] | None = None
+                                                 ) -> None:
+        """Create and append a structured observability event from context."""
+
+        event = ObservabilityEvent.from_context(context=context,
+                                                event_type=event_type,
+                                                message=message,
+                                                level="info",
+                                                step=step,
+                                                metrics=metrics,
+                                                payload=payload)
+        self.append_observability(event)
 
     def _append_jsonl(self,
                       jsonl_path: Path,
