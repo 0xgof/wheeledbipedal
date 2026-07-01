@@ -1,8 +1,8 @@
 # FL-1 - Mechanism Model for Reduced-Order Linkage
 
-- Status: `TODO`
+- Status: `Done`
 - Stage: foundational layer / mechanism model
-- Depends on: `CFG-2` preferred, but may start with direct YAML parsing if schema work is not ready
+- Depends on: `MECH-1`, `CFG-2` preferred, but may start with direct YAML parsing if schema work is not ready
 - Related: `FL-2`, `FL-3`
 - Source plan: `docs/plans/foundational_layer_plan.md`
 - Goal: define the robot state/action data model and the first reduced-order constrained-leg kinematics.
@@ -30,9 +30,41 @@ Gymnasium environment or dynamics loop can be trusted.
    - wheel/contact pose relative to body.
 6. Provide inverse mapping from leg target/posture target back to hip command where
    meaningful for v1.
-7. Load dimensions and limits from the canonical robot YAML or typed `RobotConfig`.
-8. Keep spring and lift-off/contact dynamics out of v1, but leave fields compatible with
+7. Use vector/matrix kinematics internally:
+   - reduced coordinates `q`;
+   - reduced velocities `qdot`;
+   - actuator inputs `u`;
+   - constraint residual `c(q)`;
+   - Jacobian `J(q)`;
+   - velocity residual `J(q) @ qdot`.
+8. Keep public APIs domain-named rather than exposing anonymous vectors everywhere:
+   - `leg_height_m`;
+   - `hip_angle_rad`;
+   - `wheel_angle_rad`;
+   - `motor_angle_rad`;
+   - `contact_point`;
+   - `constraint_residual`.
+9. Provide mechanism diagnostics for tests and debugging:
+   - maximum position residual;
+   - maximum velocity residual;
+   - limit status;
+   - optional Jacobian condition number.
+10. Load dimensions and limits from the canonical robot YAML or typed `RobotConfig`.
+11. Keep spring and lift-off/contact dynamics out of v1, but leave fields compatible with
    later optional additions.
+
+## Solver Boundary
+
+The mechanism implementation should be configuration-driven enough to support more than
+one reduced-coordinate linkage configuration later, but it is not a general multibody
+engine. The first implementation must be grounded in the wheeled-biped linkage. Avoid
+abstract framework code that is not exercised by that concrete configuration.
+
+The mechanism model is the formal reduced-order mathematical definition used by Layer 1.
+It should expose deterministic computations for reduced state, linkage geometry,
+constraints, Jacobians, and diagnostics. The RL agent should not consume raw matrices
+directly; it will act through the later Gymnasium environment and receive observations
+derived from this model.
 
 ## Non-goals
 
@@ -41,6 +73,8 @@ Gymnasium environment or dynamics loop can be trusted.
 - MuJoCo, Brax/MJX, Isaac, Gazebo, or ROS 2 integration.
 - full closed-chain DAE dynamics.
 - actuated knee control.
+- universal rigid-body or linkage simulation.
+- exposing raw vector indices as the main user-facing API.
 
 ## Files
 
@@ -59,6 +93,11 @@ Gymnasium environment or dynamics loop can be trusted.
   range.
 - Inverse mapping is consistent with forward mapping over representative safe hip/height
   samples.
+- Kinematic vector shapes are explicit and stable.
+- Constraint residuals are near zero for valid states and clearly nonzero for invalid
+  states.
+- Velocity residuals catch inconsistent `qdot` values even when positions are valid.
+- Diagnostics expose residual and limit information without becoming actor observations.
 - Invalid geometry, out-of-range hip values, or impossible inverse targets fail clearly.
 
 ## Validation

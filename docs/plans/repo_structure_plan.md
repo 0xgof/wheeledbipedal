@@ -28,6 +28,39 @@ the change is probably wrong.
 6. **Build the smallest thing that runs first.** The directory tree below is the
    *target*; Section 6 defines what actually gets created in each phase. Do not
    scaffold empty packages ahead of need.
+7. **Visual workflow clarity.** Folder and file names should let a reader infer the
+   workflow before opening implementation files. The tree should show what enters a
+   subsystem, what transforms it, what is stored, what is queried, and what command,
+   training, validation, or deployment surface exposes it.
+
+Avoid vague catch-all modules such as `utils.py`, `manager.py`, `handler.py`, or
+`service.py` unless the name has specific domain meaning in this repository. Prefer
+role-specific filenames that make the flow visible.
+
+The 700-line file limit should trigger meaningful structural design, not arbitrary
+file slicing. When a script becomes too large, convert it into a cohesive folder or
+package with an obvious entry point and role-based modules. The split should preserve
+the subsystem's core mechanics and avoid adding extra pass-through indirection.
+
+Preferred:
+
+```text
+subsystem/
+    cli.py
+    manifest.py
+    store.py
+    query.py
+```
+
+Avoid:
+
+```text
+subsystem/
+    part_1.py
+    part_2.py
+    helpers.py
+    misc.py
+```
 
 ---
 
@@ -217,6 +250,85 @@ Kollarčík 2021 CTU thesis).
 
 Enforcement idea (optional, cheap): an `import-linter` contract in `pyproject.toml`
 that fails CI if `envs`/`training` import `ros2`, or if `simulation` imports `gym`.
+
+---
+
+## 4.1 Visual workflow maps
+
+These maps are not separate architectures. They are the intended reading order of the
+folders above. A future module split should preserve this scan-first clarity.
+
+### Controller candidate registry
+
+```text
+ids.py
+    -> manifest.py
+    -> store.py
+    -> index.py / query.py
+    -> cli.py
+```
+
+Meaning:
+
+- `ids.py` creates candidate/run ids.
+- `manifest.py` defines durable records.
+- `store.py` writes candidate folders and append-only streams.
+- `index.py` and `query.py` make records searchable/comparable.
+- `cli.py` exposes the local user-facing command surface.
+
+### Foundational environment
+
+```text
+simulation/robot_state.py
+    -> envs/leg_kinematics.py
+    -> backends/python_sim_backend.py
+    -> envs/wheeled_biped_env.py
+    -> training/train_ppo.py
+```
+
+Meaning:
+
+- state/action records define what exists;
+- kinematics derives linkage state;
+- backend advances the reduced simulator;
+- environment assembles action, observation, reward, and termination;
+- training consumes only the Gymnasium-compatible environment.
+
+### Robusting training
+
+```text
+training/backend_factory.py
+    -> backends/{mujoco,brax_mjx,isaac}_backend.py
+    -> training/checkpoint_gates.py
+    -> validation/metrics.py
+    -> hpc/
+```
+
+Meaning:
+
+- backend factory selects the training backend from config;
+- backend modules hide simulator-specific stepping;
+- checkpoint gates decide whether a candidate continues or is promoted;
+- validation metrics provide machine-readable scoring;
+- `hpc/` exposes non-interactive remote execution.
+
+### Gazebo validation feedback
+
+```text
+validation/scenarios.py
+    -> validation/gazebo_runner.py
+    -> ros2/
+    -> validation/metrics.py
+    -> training/checkpoint_gates.py
+```
+
+Meaning:
+
+- scenarios define deterministic validation cases;
+- runner executes Gazebo/ROS 2 validation;
+- ROS 2 modules handle messages and policy-node integration;
+- metrics parse validation outputs;
+- checkpoint gates feed validation results back to robusting training.
 
 ---
 
