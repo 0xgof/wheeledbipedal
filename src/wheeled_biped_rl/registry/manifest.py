@@ -50,6 +50,22 @@ class ArtifactRefs:
 
 
 @dataclass
+class StatusTransition:
+    """One lifecycle status change for a controller candidate."""
+
+    status: str
+    reason: str
+    created_at: str
+    evaluator: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.status not in _ALLOWED_STATUS:
+            raise ValueError(f"status must be one of {sorted(_ALLOWED_STATUS)}")
+        _require_text("reason", self.reason)
+        _require_text("created_at", self.created_at)
+
+
+@dataclass
 class CandidateRecipe:
     """Versioned inputs that define a controller candidate's meaning."""
 
@@ -85,6 +101,7 @@ class CandidateManifest:
     recipe: CandidateRecipe
     artifacts: ArtifactRefs
     tags: list[str] = field(default_factory=list)
+    status_history: list[StatusTransition] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         _require_text("candidate_id", self.candidate_id)
@@ -101,6 +118,9 @@ class CandidateManifest:
             raise ValueError("recipe must be a CandidateRecipe")
         if not isinstance(self.artifacts, ArtifactRefs):
             raise ValueError("artifacts must be ArtifactRefs")
+        for transition in self.status_history:
+            if not isinstance(transition, StatusTransition):
+                raise ValueError("status_history must contain StatusTransition records")
 
 
 @dataclass
@@ -167,11 +187,23 @@ def artifact_refs_from_dict(artifact_dict: dict[str, Any]) -> ArtifactRefs:
     return artifacts
 
 
+def status_transition_from_dict(transition_dict: dict[str, Any]) -> StatusTransition:
+    """Build a status transition from serialized fields."""
+
+    transition = StatusTransition(**transition_dict)
+    return transition
+
+
 def manifest_from_dict(manifest_dict: dict[str, Any]) -> CandidateManifest:
     """Build and validate a manifest from serialized YAML fields."""
 
     manifest_fields = dict(manifest_dict)
     manifest_fields["recipe"] = candidate_recipe_from_dict(manifest_fields["recipe"])
     manifest_fields["artifacts"] = artifact_refs_from_dict(manifest_fields["artifacts"])
+    status_history = manifest_fields.get("status_history", [])
+    manifest_fields["status_history"] = [
+        status_transition_from_dict(transition_dict)
+        for transition_dict in status_history
+    ]
     manifest = CandidateManifest(**manifest_fields)
     return manifest

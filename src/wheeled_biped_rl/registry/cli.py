@@ -74,6 +74,20 @@ def _handle_compare(root: Path, args: argparse.Namespace) -> int:
     return 1
 
 
+def _handle_status_transition(root: Path,
+                              args: argparse.Namespace,
+                              status: str) -> int:
+    """Apply a lifecycle status transition and print the new status."""
+
+    store = CandidateStore(root)
+    store.transition_status(candidate_id=args.candidate_id,
+                            status=status,
+                            reason=args.reason,
+                            evaluator=args.evaluator)
+    print(status)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the registry CLI argument parser."""
 
@@ -95,6 +109,12 @@ def build_parser() -> argparse.ArgumentParser:
     compare_parser = subparsers.add_parser("compare")
     compare_parser.add_argument("first_candidate_id")
     compare_parser.add_argument("second_candidate_id")
+
+    for command_name in ("promote", "reject", "archive"):
+        status_parser = subparsers.add_parser(command_name)
+        status_parser.add_argument("candidate_id")
+        status_parser.add_argument("--reason", required=True)
+        status_parser.add_argument("--evaluator")
     return parser
 
 
@@ -114,6 +134,12 @@ def main(argv: list[str] | None = None) -> int:
         return _handle_show(root, args)
     if args.command == "compare":
         return _handle_compare(root, args)
+    if args.command == "promote":
+        return _handle_status_transition(root, args, "promoted")
+    if args.command == "reject":
+        return _handle_status_transition(root, args, "rejected")
+    if args.command == "archive":
+        return _handle_status_transition(root, args, "archived")
     parser.error(f"unsupported command: {args.command}")
     return 2
 
