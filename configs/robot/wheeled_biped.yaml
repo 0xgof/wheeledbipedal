@@ -1,0 +1,90 @@
+# =============================================================================
+# Wheeled-Biped Robot — canonical robot configuration
+# =============================================================================
+# SINGLE SOURCE OF TRUTH for the robot's intrinsic physical description.
+#
+# Read by BOTH consumers:
+#   - the Python RL environment : validated via pydantic -> RobotConfig (later)
+#   - the ROS 2 Xacro           : read raw via xacro.load_yaml -> URDF/SDF
+#
+# Plain, declarative YAML (standard scalars/lists/maps, no anchors, units in key
+# names) so both readers agree. pydantic validates the Python read; it does NOT
+# gate the ROS read. The YAML stays canonical.
+#
+# Conventions:
+#   - units are in the KEY NAMES (_m, _kg, _nm, _rad, _rad_s, ...)
+#   - vectors are NAMED maps ({x, y, z}), never positional lists
+#   - actuator torque/velocity limits live ONCE (in `actuators`)
+#   - geometry/joints define ONE side; `mechanical.symmetric` governs left/right
+#
+# Numbers: docs/robot/robot_description.md §4 (Kollarcik 2021 thesis, Table 2.1).
+# ALL VALUES ARE PLACEHOLDERS — calibrate when real CAD/specs arrive.
+# Frame: REP-103 (x forward, y left, z up). Leg rotations about y (pitch).
+#
+# Which consumer uses what:
+#   geometry + joints  -> BOTH (ROS display AND RL sim)
+#   inertial           -> RL sim / Gazebo physics only (NOT needed for RViz)
+#   actuators + spring -> RL sim / safety only          (NOT needed for RViz)
+# =============================================================================
+
+meta:
+  name: wheeled_biped
+  config_version: 1               # bump on schema change (drift detection / reproducibility)
+  topology: ascento_class         # two wheeled legs, closed kinematic chain
+  reference: "Kollarcik 2021 (CTU) — docs/robot/robot_description.md"
+  status: placeholder             # not yet calibrated to real hardware
+
+mechanical:
+  symmetric: true                 # left == right; per-side overrides go in `sides:` (omitted while true)
+
+# --- geometry (BOTH: ROS display + RL sim); one side, mirrored per mechanical.symmetric ---
+geometry:
+  body:
+    size_m:       { x: 0.20, y: 0.16, z: 0.12 }   # box extents
+    com_offset_m: { x: 0.0,  y: 0.0,  z: 0.0 }    # COM vs body centre
+  track_width_m: 0.30                             # left/right leg separation (y)
+  hip_offset_m:  { x: 0.0, z: -0.06 }             # hip mount vs base_link
+  thigh: { length_m: 0.24,  radius_m: 0.020 }     # length = thesis l1
+  shank: { length_m: 0.193, radius_m: 0.018 }     # length = thesis l3
+  wheel: { radius_m: 0.07,  width_m: 0.04 }       # radius = thesis r0
+
+# --- joints (BOTH): kinematics only (axis + limits); effort/velocity come from `actuators` ---
+joints:
+  hip:
+    axis:            { x: 0, y: 1, z: 0 }         # pitch
+    limit_lower_rad: -1.57
+    limit_upper_rad:  1.57
+  knee:
+    axis:            { x: 0, y: 1, z: 0 }
+    passive:          true                        # no knee motor; sprung only if spring.enabled
+    limit_lower_rad: -2.36
+    limit_upper_rad:  0.0
+  wheel:
+    axis:       { x: 0, y: 1, z: 0 }
+    continuous: true                              # no position limits
+
+# --- inertial (RL sim / Gazebo only; NOT used by RViz) ---
+# `inertia` is a map so it grows to a full tensor (i_xx, i_yy, i_zz, ...) when CAD exists.
+inertial:
+  body:  { mass_kg: 1.50, inertia: { i_yy_kg_m2: 0.0119 } }
+  thigh: { mass_kg: 0.20, inertia: { i_yy_kg_m2: 0.00096 } }
+  shank: { mass_kg: 0.10, inertia: { i_yy_kg_m2: 0.00031 } }
+  wheel: { mass_kg: 0.30, inertia: { i_yy_kg_m2: 0.000735 } }
+
+# --- actuators (RL sim + safety; SINGLE SOURCE for torque/velocity limits) ---
+actuators:
+  hip_motor:
+    max_torque_nm:      2.0                        # thesis ±2 N·m
+    max_velocity_rad_s: 20.0                       # placeholder
+    gear_ratio:         16.5                       # thesis 1:16.5 (dimensionless)
+  wheel_motor:
+    max_torque_nm:      2.0
+    max_velocity_rad_s: 40.0                       # placeholder
+    slip_torque_nm:     0.5                        # wheel slips above this (thesis)
+  joint_damping_nm_s_rad: 0.01                     # thesis b
+
+# --- knee torsion spring (OPTIONAL; v1 = NO spring) ---
+spring:
+  enabled: false                                   # v1 baseline = rigid, no-spring leg
+  stiffness_nm_rad: 0.25                           # used only if enabled
+  zero_angle_rad:  -8.50                           # thesis -487° ; used only if enabled
