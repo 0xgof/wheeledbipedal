@@ -16,7 +16,10 @@ from wheeled_biped_rl.simulation.mechanism_config import RobotMechanismConfig
 
 @dataclass(frozen=True)
 class Point2D:
-    """Planar point in the body side-view frame."""
+    """Planar point in the body side-view frame.
+
+    Coordinates use meters with ``x`` forward and ``z`` upward.
+    """
 
     x_m: float
     z_m: float
@@ -24,7 +27,11 @@ class Point2D:
 
 @dataclass(frozen=True)
 class LegGeometry:
-    """Domain-named derived geometry for one reduced rigid leg."""
+    """Domain-named derived geometry for one reduced rigid leg.
+
+    This is the kinematic output consumed by visualization and diagnostics. It
+    does not contain actuator commands or dynamics state beyond hip velocity.
+    """
 
     side: str
     hip_angle_rad: float
@@ -39,7 +46,11 @@ class LegGeometry:
 
 @dataclass(frozen=True)
 class MechanismDiagnostics:
-    """Residual and limit diagnostics for reduced mechanism states."""
+    """Residual and limit diagnostics for reduced mechanism states.
+
+    Diagnostics summarize whether the reduced closed-chain approximation is
+    internally consistent for the current left/right leg geometry.
+    """
 
     max_position_residual_m: float
     max_velocity_residual_m_s: float
@@ -48,7 +59,11 @@ class MechanismDiagnostics:
 
 
 class RigidLegKinematics:
-    """Forward, inverse, and residual checks for the v1 rigid linkage."""
+    """Forward, inverse, and residual checks for the v1 rigid linkage.
+
+    The model treats each side as a fixed-length leg driven by hip pitch. It is a
+    reduced kinematic approximation, not the final closed-chain dynamics solver.
+    """
 
     def __init__(self, mechanism_config: RobotMechanismConfig) -> None:
         """Create kinematics from a resolved mechanism config."""
@@ -60,7 +75,13 @@ class RigidLegKinematics:
                      hip_angle_rad: float,
                      hip_velocity_rad_s: float,
                      side: str) -> LegGeometry:
-        """Map one hip coordinate to deterministic derived leg geometry."""
+        """Map one hip coordinate to deterministic derived leg geometry.
+
+        Args:
+            hip_angle_rad: Reduced hip pitch coordinate.
+            hip_velocity_rad_s: Hip pitch velocity used for velocity diagnostics.
+            side: ``"left"`` or ``"right"``.
+        """
 
         self._require_side(side)
         contact_x_m = self.leg_length_m * math.sin(hip_angle_rad)
@@ -81,7 +102,11 @@ class RigidLegKinematics:
         return leg_geometry
 
     def inverse_height(self, target_height_m: float) -> float:
-        """Map a reachable absolute leg height to a hip angle."""
+        """Map a reachable absolute leg height to a hip angle.
+
+        Raises:
+            ValueError: If the requested height is outside the rigid leg reach.
+        """
 
         if target_height_m <= 0.0 or target_height_m > self.leg_length_m:
             raise ValueError("height target is outside reachable range")
@@ -101,7 +126,7 @@ class RigidLegKinematics:
     def vertical_velocity(self,
                           hip_angle_rad: float,
                           hip_velocity_rad_s: float) -> float:
-        """Return contact vertical velocity implied by hip motion."""
+        """Return contact vertical velocity implied by hip motion Jacobian."""
 
         vertical_velocity_m_s = (self.leg_length_m
                                  * math.sin(hip_angle_rad)

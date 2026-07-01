@@ -8,6 +8,8 @@ version = "0.0.1"
 description = "RL training and validation tools for a wheeled-biped robot."
 requires-python = ">=3.10"
 dependencies = [
+    "gymnasium>=1.0",
+    "numpy>=1.24",
     "PyYAML>=6.0",
 ]
 
@@ -22,4 +24,3 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-
