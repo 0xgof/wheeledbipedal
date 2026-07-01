@@ -34,3 +34,54 @@ def test_cli_compare_reports_mismatches(tmp_path, capsys) -> None:
     assert exit_code == 1
     assert "backend_id" in captured.out
 
+
+def test_cli_promotes_candidate_with_reason(tmp_path, capsys) -> None:
+    store = CandidateStore(tmp_path)
+    manifest = make_manifest()
+    store.create_candidate(manifest)
+
+    exit_code = main([
+        "--root", str(tmp_path), "promote", manifest.candidate_id,
+        "--reason", "passed gate",
+        "--evaluator", "pytest",
+    ])
+
+    captured = capsys.readouterr()
+    loaded_manifest = store.read_manifest(manifest.candidate_id)
+    assert exit_code == 0
+    assert "promoted" in captured.out
+    assert loaded_manifest.status == "promoted"
+
+
+def test_cli_rejects_candidate_with_reason(tmp_path, capsys) -> None:
+    store = CandidateStore(tmp_path)
+    manifest = make_manifest()
+    store.create_candidate(manifest)
+
+    exit_code = main([
+        "--root", str(tmp_path), "reject", manifest.candidate_id,
+        "--reason", "fell in validation",
+    ])
+
+    captured = capsys.readouterr()
+    loaded_manifest = store.read_manifest(manifest.candidate_id)
+    assert exit_code == 0
+    assert "rejected" in captured.out
+    assert loaded_manifest.status == "rejected"
+
+
+def test_cli_archives_candidate_with_reason(tmp_path, capsys) -> None:
+    store = CandidateStore(tmp_path)
+    manifest = make_manifest()
+    store.create_candidate(manifest)
+
+    exit_code = main([
+        "--root", str(tmp_path), "archive", manifest.candidate_id,
+        "--reason", "superseded",
+    ])
+
+    captured = capsys.readouterr()
+    loaded_manifest = store.read_manifest(manifest.candidate_id)
+    assert exit_code == 0
+    assert "archived" in captured.out
+    assert loaded_manifest.status == "archived"

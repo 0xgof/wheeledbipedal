@@ -11,9 +11,11 @@ import yaml
 from wheeled_biped_rl.registry.manifest import (
     CandidateManifest,
     MetricRecord,
+    StatusTransition,
     manifest_from_dict,
     record_to_dict,
 )
+from wheeled_biped_rl.registry.metadata import current_timestamp
 
 
 class CandidateStore:
@@ -74,6 +76,32 @@ class CandidateStore:
         evaluation_path = (self.candidate_dir(evaluation_dict["candidate_id"])
                            / "evaluations.jsonl")
         self._append_jsonl(evaluation_path, evaluation_dict)
+
+    def read_evaluations(self, candidate_id: str) -> list[dict[str, Any]]:
+        """Read all evaluation records for a candidate."""
+
+        evaluation_path = self.candidate_dir(candidate_id) / "evaluations.jsonl"
+        evaluations = []
+        for evaluation_line in evaluation_path.read_text(encoding="utf-8").splitlines():
+            evaluations.append(json.loads(evaluation_line))
+        return evaluations
+
+    def transition_status(self,
+                          candidate_id: str,
+                          status: str,
+                          reason: str,
+                          evaluator: str | None = None) -> StatusTransition:
+        """Update candidate status and append a lifecycle transition record."""
+
+        manifest = self.read_manifest(candidate_id)
+        transition = StatusTransition(status=status,
+                                      reason=reason,
+                                      created_at=current_timestamp(),
+                                      evaluator=evaluator)
+        manifest.status = status
+        manifest.status_history.append(transition)
+        self.write_manifest(manifest)
+        return transition
 
     def write_reward_spec(self,
                           candidate_id: str,
